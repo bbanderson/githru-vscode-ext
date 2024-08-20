@@ -9,6 +9,12 @@ const ANALYZE_DATA_KEY = "memento_analyzed_data";
 export default class WebviewLoader implements vscode.Disposable {
   private readonly _panel: vscode.WebviewPanel | undefined;
 
+  /** 처음에 불러올 개수
+   * @description 설정 또는 view에서 사용자가 커스터마이징 할 수 있도록 열어둬도 됩니다. */
+  private gitLogCount: number = 0;
+  // TODO
+  /* private prevGitLogCount: number = 0; */
+  private baseBranchName: string = "main";
   constructor(
     private readonly extensionPath: string,
     context: vscode.ExtensionContext,
@@ -17,11 +23,11 @@ export default class WebviewLoader implements vscode.Disposable {
     const { fetchClusterNodes, fetchBranches, fetchCurrentBranch } = fetcher;
     const viewColumn = vscode.ViewColumn.One;
 
-     //캐시 초기화
-     console.log("Initialize cache data");
-     context.workspaceState.keys().forEach(key => {
-       context.workspaceState.update(key, undefined);
-     });
+    //캐시 초기화
+    console.log("Initialize cache data");
+    context.workspaceState.keys().forEach((key) => {
+      context.workspaceState.update(key, undefined);
+    });
 
     this._panel = vscode.window.createWebviewPanel("WebviewLoader", "githru-view", viewColumn, {
       enableScripts: true,
@@ -36,26 +42,27 @@ export default class WebviewLoader implements vscode.Disposable {
       const { command, payload } = message;
 
       if (command === "fetchAnalyzedData" || command === "refresh") {
-        const baseBranchName = (payload && JSON.parse(payload)) ?? (await fetchCurrentBranch());
-        const storedAnalyzedData = context.workspaceState.get<ClusterNode[]>(`${ANALYZE_DATA_KEY}_${baseBranchName}`);
+        this.baseBranchName = (payload && JSON.parse(payload)) ?? (await fetchCurrentBranch());
+        const storedAnalyzedData = context.workspaceState.get<ClusterNode[]>(
+          `${ANALYZE_DATA_KEY}_${this.baseBranchName}`
+        );
         let analyzedData = storedAnalyzedData;
         if (!storedAnalyzedData) {
           console.log("No cache Data");
-          console.log("baseBranchName : ",baseBranchName);
-          analyzedData = await fetchClusterNodes(baseBranchName);
-          context.workspaceState.update(`${ANALYZE_DATA_KEY}_${baseBranchName}`, analyzedData);
-        }else console.log("Cache data exists");
+          console.log("baseBranchName : ", this.baseBranchName);
+          analyzedData = await fetchClusterNodes(this.baseBranchName);
+          context.workspaceState.update(`${ANALYZE_DATA_KEY}_${this.baseBranchName}`, analyzedData);
+        } else console.log("Cache data exists");
 
         // 현재 캐싱된 Branch
         console.log("Current Stored data");
-        context.workspaceState.keys().forEach(key=>{
-            console.log(key);
-        })
-
+        context.workspaceState.keys().forEach((key) => {
+          console.log(key);
+        });
 
         const resMessage = {
-            command,
-            payload: analyzedData,
+          command,
+          payload: analyzedData,
         };
 
         await this.respondToMessage(resMessage);
@@ -74,6 +81,27 @@ export default class WebviewLoader implements vscode.Disposable {
         if (colorCode.primary) {
           setPrimaryColor(colorCode.primary);
         }
+      }
+
+      if (command === "fetchMoreGitLog") {
+        const { offset, limit } = JSON.parse(payload || "") ?? {};
+
+        const newGitLogCount = +(limit ?? 0);
+        this.gitLogCount = this.gitLogCount + newGitLogCount;
+        console.log("view -> engine 메시지 : ", { offset, limit, newGitLogCount });
+
+        // TODO : CSM 가공 (이어붙이기)
+        const analyzedData = await fetchClusterNodes(
+          this.baseBranchName
+          /* offset */
+          /* this.gitLogCount, +(limit ?? 0) */
+        );
+        const resMessage = {
+          command,
+          payload: { newGitLogCount, analyzedData },
+        };
+
+        await this.respondToMessage(resMessage);
       }
     });
 

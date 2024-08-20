@@ -91,4 +91,5 @@ export class AnalysisEngine {
   };
 }
 
+export * from "./utils";
 export default AnalysisEngine;
